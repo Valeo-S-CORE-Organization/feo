@@ -18,7 +18,7 @@ use crate::ids::{ActivityId, AgentId};
 use crate::signalling::common::interface::ConnectScheduler;
 use crate::signalling::common::signals::Signal;
 use crate::timestamp::timestamp;
-use alloc::boxed::Box;
+use alloc::{boxed::Box, collections::BTreeSet};
 use alloc::vec::Vec;
 use feo_log::{debug, error, info, trace};
 use feo_time::Instant;
@@ -90,8 +90,6 @@ impl Scheduler {
     }
 
     /// Run the task lifecycle, i.e. startup, stepping, shutdown
-    ///
-    /// Shutdown is not implemented, as it is not yet defined in the architecture
     pub(crate) fn run(&mut self) {
         #[cfg(feature = "loop_duration_meter")]
         let mut meter = loop_duration_meter::LoopDurationMeter::<1000>::default();
@@ -213,7 +211,7 @@ impl Scheduler {
     }
 
     /// Send shutdown signal to the given activity
-    #[allow(dead_code)]
+
     fn shutdown_activity(
         id: &ActivityId,
         recorder_ids: &[AgentId],
@@ -223,6 +221,79 @@ impl Scheduler {
         let signal = Signal::Shutdown((*id, timestamp()));
         Self::trigger_activity(id, &signal, recorder_ids, connector)
     }
+
+
+      /// Manages the graceful shutdown of all started activities and agents.
+    fn shutdown_gracefully(&mut self, reason: &str) {
+        info!("Shutting down... Reason: {}", reason);
+
+        // 1. Identify which activities have successfully started.
+        let started_activities: BTreeSet<_> = self
+            .activity_states
+            .iter()
+            .filter(|(_, state)| state.ready)
+            .map(|(id, _)| *id)
+            .collect();
+
+        if !started_activities.is_empty() {
+            // 2. Send a shutdown signal to only the started activities.
+            info!(
+                "Sending shutdown signal to started activities: {:?}",
+                started_activities
+            );
+            for activity_id in &started_activities {
+                Self::shutdown_activity(activity_id, &self.recorder_ids, &mut self.connector)
+                    .unwrap_or_else(|e| {
+                        error!(
+                            "Failed to send shutdown to activity {}: {:?}",
+                            activity_id, e
+                        )
+                    });
+            }
+
+            // 3. Wait for confirmation only from the activities that were told to shut down.
+            let mut pending_shutdown = started_activities;
+            info!(
+                "Waiting for shutdown confirmation from: {:?}",
+                pending_shutdown
+            );
+
+            let shutdown_timeout = self.receive_timeout * (pending_shutdown.len() as u32 + 1);
+            let start = Instant::now();
+
+            while !pending_shutdown.is_empty() {
+                if start.elapsed() > shutdown_timeout {
+                    error!(
+                        "Timeout waiting for shutdown confirmation. Still waiting for: {:?}",
+                        pending_shutdown
+                    );
+                    break;
+                }
+
+                if let Ok(id) = self.wait_next_ready() {
+                    if pending_shutdown.remove(&id) {
+                          info!("Received shutdown confirmation from activity {:?}", id);
+                    }
+                }
+            }
+        } else {
+            info!("No activities were successfully started. Skipping activity shutdown.");
+        }
+
+        // 4. Broadcast Terminate signal to all agents.
+        info!("Broadcasting Terminate signal to all agents.");
+        if let Err(e) = self.connector.broadcast(&Signal::Terminate(timestamp())) {
+            error!("Failed to broadcast Terminate signal: {:?}", e);
+        }
+
+        // // 5. Wait for TerminateAck from all remote agents.
+        // // This part is simplified. A real implementation would track agent IDs.
+        // info!("Waiting for termination acknowledgements from remote agents...");
+        // thread::sleep(self.cycle_time); // Simple wait
+        // info!("Finished waiting for termination acknowledgements. Shutdown complete.");
+    }
+
+
 
     /// Trigger activity by forwarding the signal to the activity and all recorders
     fn trigger_activity(
@@ -239,18 +310,22 @@ impl Scheduler {
     }
 
     /// Wait for the next incoming ready signal
-    fn wait_next_ready(&mut self) -> Result<(), Error> {
+    fn wait_next_ready(&mut self) -> Result<ActivityId, Error> {
         // Wait for next intra-process ready signal from one of the workers
         let activity_id = loop {
-            let received = self.connector.receive(self.receive_timeout)?;
-            match received {
-                None => continue,
+                       match self.connector.receive(self.receive_timeout)? {
+                None => return Err(Error::Timeout(self.receive_timeout, "waiting for ready signal")),
                 Some(signal @ Signal::Ready((id, _))) => {
                     for recorder_id in self.recorder_ids.iter() {
                         self.connector.send_to_recorder(*recorder_id, &signal)?;
                     }
                     break id;
                 }
+                // Some(Signal::TerminateAck(agent_id)) => {
+                // info!("Received TerminateAck from agent {}", agent_id);
+                // // In a more complex implementation, we would track these.
+                // continue;
+                // }
                 Some(other) => {
                     error!("Received unexpected signal {other:?} while waiting for ready signal");
                 }
@@ -259,7 +334,7 @@ impl Scheduler {
 
         // Set corresponding ready flag
         self.activity_states.get_mut(&activity_id).unwrap().ready = true;
-        Ok(())
+        Ok(activity_id)
     }
 
     /// Check if all activities have signalled 'ready'

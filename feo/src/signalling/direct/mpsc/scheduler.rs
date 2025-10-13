@@ -170,4 +170,12 @@ impl ConnectScheduler for SchedulerConnector {
     fn send_to_recorder(&mut self, _recorder_id: AgentId, _signal: &Signal) -> Result<(), Error> {
         unimplemented!("Recording not supported with mpsc channels");
     }
+
+    fn broadcast(&mut self, _signal: &Signal) -> Result<(), Error> {
+        // In direct MPSC mode, all workers are local threads within the same process.
+        // When the scheduler's `run` method finishes and the main thread exits,
+        // the OS will automatically terminate all worker threads.
+        // Therefore, broadcasting a `Terminate` signal is not strictly necessary.
+        Ok(())
+    }
 }

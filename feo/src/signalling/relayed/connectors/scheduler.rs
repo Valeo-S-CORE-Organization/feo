@@ -142,4 +142,8 @@ impl<Inter: IsChannel, Intra: IsChannel> ConnectScheduler for SchedulerConnector
     fn send_to_recorder(&mut self, recorder_id: AgentId, signal: &Signal) -> Result<(), Error> {
         self.send_to_agent(recorder_id, (*signal).into())
     }
+
+    fn broadcast(&mut self, signal: &Signal) -> Result<(), Error> {
+        self.ipc_send_relay.broadcast((*signal).into())
+    }
 }

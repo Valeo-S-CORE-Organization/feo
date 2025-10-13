@@ -181,4 +181,19 @@ where
             .send(token, &ProtocolSignal::Core(*signal))
             .map_err(|e| Error::Io((e, "failed to send")))
     }
+     fn broadcast(&mut self, signal: &Signal) -> Result<(), Error> {
+        let protocol_signal = ProtocolSignal::Core(*signal);
+
+        // Collect unique tokens to avoid sending the same message multiple times to the same worker.
+        let unique_tokens: HashSet<_> = self
+            .activity_id_token_map
+            .values()
+            .chain(self.recorder_id_token_map.values())
+            .collect();
+
+        for token in unique_tokens {
+            self.server.send(token, &protocol_signal)?;
+        }
+        Ok(())
+    }
 }

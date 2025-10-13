@@ -81,6 +81,11 @@ impl<T: ConnectWorker> Worker<T> {
                 Signal::StartupSync(sync_info) => {
                     timestamp::initialize_from(sync_info);
                 }
+                Signal::Terminate(_) => {
+                    debug!("Worker {} received Terminate signal. Acknowledging and exiting.", self.id);
+                    //////////////////////////////////self.connector.send_to_scheduler(&Signal::TerminateAck(self.agent_id))?;
+                    return Ok(()); // Graceful exit
+                }
                 other => return Err(Error::UnexpectedSignal(other)),
             }
         }
@@ -109,7 +114,7 @@ impl<T: ConnectWorker> Worker<T> {
                     .send_to_scheduler(&Signal::Ready((*activity_id, timestamp::timestamp())))
             }
             Signal::Shutdown((activity_id, _)) => {
-                activity.startup();
+                activity.shutdown();
                 let elapsed = start.elapsed();
                 debug!("Ran shutdown of activity {id:?} in {elapsed:?}");
                 self.connector

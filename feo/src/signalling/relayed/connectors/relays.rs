@@ -25,6 +25,7 @@ use core::time::Duration;
 use feo_log::{debug, error, trace};
 use std::collections::{HashMap, HashSet};
 use std::thread;
+use alloc::vec::Vec;
 
 /// Relay for the primary agent to receive signals from secondary agents
 pub struct PrimaryReceiveRelay<Inter: IsChannel, Intra: IsChannel> {
@@ -152,6 +153,14 @@ impl<Inter: IsChannel> PrimarySendRelay<Inter> {
         for id in self.remote_agents.iter() {
             let channel_id = ChannelId::Agent(*id);
             self.inter_sender.send(channel_id, signal.into())?;
+        }
+        Ok(())
+    }
+      pub fn broadcast(&mut self, signal: Inter::ProtocolSignal) -> Result<(), Error> {
+        let remote_agents: Vec<_> = self.remote_agents.iter().copied().collect();
+        // Send signal to all remote agents
+        for id in remote_agents {
+            self.send_to_agent(id, signal)?;
         }
         Ok(())
     }
