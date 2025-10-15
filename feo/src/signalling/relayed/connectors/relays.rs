@@ -25,7 +25,6 @@ use core::time::Duration;
 use feo_log::{debug, error, trace};
 use std::collections::{HashMap, HashSet};
 use std::thread;
-use alloc::vec::Vec;
 
 /// Relay for the primary agent to receive signals from secondary agents
 pub struct PrimaryReceiveRelay<Inter: IsChannel, Intra: IsChannel> {
@@ -156,14 +155,16 @@ impl<Inter: IsChannel> PrimarySendRelay<Inter> {
         }
         Ok(())
     }
-      pub fn broadcast(&mut self, signal: Inter::ProtocolSignal) -> Result<(), Error> {
-        let remote_agents: Vec<_> = self.remote_agents.iter().copied().collect();
+
+    pub fn broadcast(&mut self, signal: Inter::ProtocolSignal) -> Result<(), Error> {
         // Send signal to all remote agents
-        for id in remote_agents {
-            self.send_to_agent(id, signal)?;
+        for id in self.remote_agents.iter() {
+            let channel_id = ChannelId::Agent(*id);
+            self.inter_sender.send(channel_id, signal)?;
         }
         Ok(())
     }
+
 }
 
 /// Relay for a secondary to receive signals from the primary agent
@@ -277,29 +278,34 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
                 }
             };
 
-            // Check signal type and extract activity ID
-            let act_id = match core_signal {
-                Signal::Startup((act_id, _)) => act_id,
-                Signal::Step((act_id, _)) => act_id,
-                Signal::Shutdown((act_id, _)) => act_id,
-                other => {
-                    error!("Received unexpected signal {other:?}");
-                    continue;
+            // Handle targeted signals vs. broadcast signals
+            match core_signal {
+                Signal::Startup((act_id, _)) | Signal::Step((act_id, _)) | Signal::Shutdown((act_id, _)) => {
+                    // This is a targeted signal for a specific activity.
+                    // Lookup corresponding worker id.
+                    let Some(worker_id) = activity_worker_map.get(&act_id) else {
+                        error!("Received unexpected activity id {act_id:?} in {core_signal:?}");
+                        continue;
+                    };
+
+                    // Forward signal to the specific worker.
+                    let channel_id = ChannelId::Worker(*worker_id);
+                    let protocol_signal: Intra::ProtocolSignal = core_signal.into();
+                    if let Err(e) = intra_sender.send(channel_id, protocol_signal) {
+                        error!("Failed to send signal {:?} to worker {}: {:?}", protocol_signal, worker_id, e);
+                    }
                 }
-            };
-
-            // Lookup corresponding worker id
-            let Some(worker_id) = activity_worker_map.get(&act_id) else {
-                error!("Received unexpected activity id {act_id:?} in {core_signal:?}");
-                continue;
-            };
-
-            // Forward signal to determined worker
-            let channel_id = ChannelId::Worker(*worker_id);
-            let protocol_signal: Intra::ProtocolSignal = core_signal.into();
-            let result = intra_sender.send(channel_id, protocol_signal);
-            if result.is_err() {
-                error!("Failed to send signal {protocol_signal:?}");
+                Signal::Terminate(_) | Signal::StartupSync(_) => {
+                    // This is a broadcast signal for all local workers.
+                    debug!("Broadcasting {:?} signal to all local workers.", core_signal);
+                    let protocol_signal: Intra::ProtocolSignal = core_signal.into();
+                    if let Err(e) = intra_sender.broadcast(protocol_signal) {
+                        error!("Failed to broadcast signal to local workers: {:?}", e);
+                    }
+                }
+                other => {
+                    error!("Received unexpected signal '{:?}' from primary, discarding.", other);
+                }
             }
         }
     }

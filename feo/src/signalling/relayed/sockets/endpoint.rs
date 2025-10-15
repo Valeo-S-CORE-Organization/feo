@@ -23,7 +23,7 @@ pub(crate) use crate::signalling::common::socket::ProtocolSignal;
 use crate::signalling::relayed;
 use core::net::SocketAddr;
 use core::time::Duration;
-use feo_log::{debug, trace};
+use feo_log::{debug, error, trace};
 use feo_time::Instant;
 use mio::{Events, Token};
 use std::collections::{HashMap, HashSet};
@@ -209,6 +209,17 @@ impl<S: IsServer> ProtocolMultiEndpoint<S> {
             .expect("not connected")
             .send(token, &signal)
     }
+
+    pub fn broadcast(&mut self, signal: ProtocolSignal) -> Result<(), Error> {
+        let server = self.server.as_mut().expect("not connected");
+        // Iterate over all known connection tokens and send the signal.
+        for token in self.channel_token_map.values() {
+            if let Err(e) = server.send(token, &signal) {
+                error!("Failed to broadcast to token {:?}: {:?}", token, e);
+            }
+        }
+        Ok(())
+    }
 }
 
 impl<S: IsServer> HasAddress for ProtocolMultiEndpoint<S> {
@@ -266,6 +277,10 @@ impl<S: IsServer> relayed::interface::ProtocolMultiSend for ProtocolMultiSender<
 
     fn send(&mut self, channel_id: ChannelId, signal: Self::ProtocolSignal) -> Result<(), Error> {
         self.send(channel_id, signal)
+    }
+
+    fn broadcast(&mut self, signal: Self::ProtocolSignal) -> Result<(), Error> {
+        self.broadcast(signal)
     }
 
     fn connect_receivers(&mut self, timeout: Duration) -> Result<(), Error> {
