@@ -72,10 +72,17 @@ impl<T: ConnectWorker> Worker<T> {
         debug!("Running worker {}", self.id);
 
         loop {
-            // Receive from connector
-            let Some(signal) = self.connector.receive(self.timeout)? else {
-                // TODO: Manage timeout
-                continue;
+            let signal = match self.connector.receive(self.timeout) {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    // TODO: Manage timeout
+                    continue;
+                }
+                Err(Error::ChannelClosed) => {
+                    debug!("Worker {} detected closed channel from scheduler/relay. Exiting.", self.id);
+                    return Ok(()); // Graceful exit
+                }
+                Err(e) => return Err(e), // Propagate other errors
             };
 
             match signal {

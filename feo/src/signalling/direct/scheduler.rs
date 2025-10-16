@@ -111,9 +111,8 @@ where
         let mut missing_recorders: HashSet<AgentId> = self.all_recorders.iter().cloned().collect();
 
         while !missing_activities.is_empty() || !missing_recorders.is_empty() {
-            if let Some((token, signal)) = self
-                .server
-                .receive(&mut self.events, Duration::from_secs(1))
+            if let Ok(Some((token, signal))) =
+                self.server.receive(&mut self.events, Duration::from_secs(1))
             {
                 match signal {
                     ProtocolSignal::ActivityHello(activity_id) => {
@@ -156,14 +155,15 @@ where
     }
 
     fn receive(&mut self, timeout: Duration) -> Result<Option<Signal>, Error> {
-        if let Some((_, signal)) = self.server.receive(&mut self.events, timeout) {
-            match signal {
-                ProtocolSignal::Core(signal) => return Ok(Some(signal)),
-                other => panic!("received unexpected signal {other:?}"),
+        match self.server.receive(&mut self.events, timeout) {
+            Ok(Some((_, ProtocolSignal::Core(signal)))) => Ok(Some(signal)),
+            Ok(Some((_, other))) => {
+                warn!("received unexpected protocol signal {:?}", other);
+                Ok(None)
             }
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
         }
-
-        Ok(None)
     }
 
     fn send_to_activity(&mut self, activity_id: ActivityId, signal: &Signal) -> Result<(), Error> {

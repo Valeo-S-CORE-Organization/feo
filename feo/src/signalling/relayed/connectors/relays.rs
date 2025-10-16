@@ -215,17 +215,18 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
     fn receive_helper(
         receiver: &mut Inter::Receiver,
         timeout: Duration,
-    ) -> Option<Inter::ProtocolSignal> {
+    ) -> Result<Option<<Inter as IsChannel>::ProtocolSignal>, Error> {
         let received = receiver.receive(timeout);
         match received {
-            Ok(Some(s)) => Some(s),
+            Ok(Some(s)) => Ok(Some(s)),
             Ok(None) => {
                 error!("Reception timed out");
-                None
+                Ok(None)
             }
-            Err(_) => {
-                error!("Failed to receive");
-                None
+            Err(Error::ChannelClosed) => Err(Error::ChannelClosed),
+            Err(e) => {
+                error!("Failed to receive: {:?}", e);
+                Err(e)
             }
         }
     }
@@ -250,9 +251,16 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
 
         // Wait for startup sync
         loop {
-            // Receive signal on inter-process connection
-            let Some(protocol_signal) = Self::receive_helper(&mut inter_receiver, timeout) else {
-                continue;
+            let protocol_signal = match Self::receive_helper(&mut inter_receiver, timeout) {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    // Timeout is logged by helper, just continue waiting.
+                    continue;
+                }
+                Err(e) => {
+                    error!("Fatal error during startup sync: {:?}. Exiting.", e);
+                    return;
+                }
             };
 
             let sync_info = match protocol_signal.try_into() {
@@ -269,9 +277,20 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
         debug!("Time synchronization done");
 
         loop {
-            // Receive signal on inter-process connection
-            let Some(protocol_signal) = Self::receive_helper(&mut inter_receiver, timeout) else {
-                continue;
+            let protocol_signal = match Self::receive_helper(&mut inter_receiver, timeout) {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    // Timeout is logged by helper, just continue waiting.
+                    continue;
+                }
+                Err(Error::ChannelClosed) => {
+                    error!("Connection to primary lost. Initiating self-shutdown.");
+                    return; // Exit the relay thread. The workers will detect the closed channel.
+                }
+                Err(e) => {
+                    error!("Fatal error during receive: {:?}. Exiting.", e);
+                    return;
+                }
             };
 
             let core_signal: Signal = match protocol_signal.try_into() {

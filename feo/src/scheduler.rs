@@ -17,7 +17,7 @@ use crate::error::Error;
 use crate::ids::{ActivityId, AgentId};
 use crate::signalling::common::interface::ConnectScheduler;
 use crate::signalling::common::signals::Signal;
-use crate::timestamp::{timestamp, Timestamp};
+use crate::timestamp::timestamp;
 use alloc::{boxed::Box, collections::BTreeSet};
 use alloc::vec::Vec;
 use feo_log::{debug, error, info, trace};

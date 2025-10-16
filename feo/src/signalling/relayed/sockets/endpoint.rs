@@ -53,14 +53,14 @@ pub trait IsServer: HasAddress {
         &mut self,
         events: &mut Events,
         timeout: Duration,
-    ) -> Option<(Token, ProtocolSignal)>;
+    ) -> Result<Option<(Token, ProtocolSignal)>, Error>;
 }
 
 /// Required shared socket client functionality
 pub trait IsClient: HasAddress {
     fn send(&mut self, msg: &ProtocolSignal) -> Result<(), Error>;
 
-    fn receive(&mut self, events: &mut Events, timeout: Duration) -> Option<ProtocolSignal>;
+    fn receive(&mut self, events: &mut Events, timeout: Duration) -> Result<Option<ProtocolSignal>, Error>;
 
     fn connect(address: &Self::Address, channel_id: ChannelId) -> Self;
 }
@@ -106,8 +106,10 @@ impl<C: IsClient> ProtocolEndpoint<C> {
         let mut elapsed = Duration::ZERO;
         while elapsed <= timeout {
             let remaining = timeout.saturating_sub(elapsed);
-            if let Some(signal) = client.receive(&mut self.events, remaining) {
-                return Ok(Some(signal));
+            match client.receive(&mut self.events, remaining) {
+                Ok(Some(signal)) => return Ok(Some(signal)),
+                Ok(None) => {} // Continue loop on timeout
+                Err(e) => return Err(e),
             }
             elapsed = start.elapsed();
         }
@@ -163,8 +165,7 @@ impl<S: IsServer> ProtocolMultiEndpoint<S> {
         let mut missing_peers: HashSet<ChannelId> = self.channel_ids.clone();
         while !missing_peers.is_empty() {
             trace!("Connecting missing channels {:?}", missing_peers);
-            // TODO: server to reject connections from unexpected peers
-            if let Some((token, signal)) = server.receive(&mut self.events, timeout) {
+            if let Ok(Some((token, signal))) = server.receive(&mut self.events, timeout) {
                 match signal {
                     ProtocolSignal::ChannelHello(channel_id) => {
                         self.channel_token_map.insert(channel_id, token);
@@ -191,8 +192,10 @@ impl<S: IsServer> ProtocolMultiEndpoint<S> {
         let mut elapsed = Duration::ZERO;
         while elapsed <= timeout {
             let remaining = timeout.saturating_sub(elapsed);
-            if let Some(signal) = server.receive(&mut self.events, remaining).map(|(_, s)| s) {
-                return Ok(Some(signal));
+            match server.receive(&mut self.events, remaining) {
+                Ok(Some((_, signal))) => return Ok(Some(signal)),
+                Ok(None) => {} // Continue loop on timeout
+                Err(e) => return Err(e),
             }
             elapsed = start.elapsed();
         }
@@ -243,7 +246,7 @@ impl IsServer for TcpServer {
         &mut self,
         events: &mut Events,
         timeout: Duration,
-    ) -> Option<(Token, ProtocolSignal)> {
+    ) -> Result<Option<(Token, ProtocolSignal)>, Error> {
         self.receive(events, timeout)
     }
 }
@@ -334,7 +337,7 @@ impl IsServer for UnixServer {
         &mut self,
         events: &mut Events,
         timeout: Duration,
-    ) -> Option<(Token, ProtocolSignal)> {
+    ) -> Result<Option<(Token, ProtocolSignal)>, Error> {
         self.receive(events, timeout)
     }
 }
@@ -348,7 +351,7 @@ impl IsClient for TcpClient {
         self.send(msg)
     }
 
-    fn receive(&mut self, events: &mut Events, timeout: Duration) -> Option<ProtocolSignal> {
+    fn receive(&mut self, events: &mut Events, timeout: Duration) -> Result<Option<ProtocolSignal>, Error> {
         self.receive(events, timeout)
     }
 
@@ -366,7 +369,7 @@ impl IsClient for UnixClient {
         self.send(msg)
     }
 
-    fn receive(&mut self, events: &mut Events, timeout: Duration) -> Option<ProtocolSignal> {
+    fn receive(&mut self, events: &mut Events, timeout: Duration) -> Result<Option<ProtocolSignal>, Error> {
         self.receive(events, timeout)
     }
 
