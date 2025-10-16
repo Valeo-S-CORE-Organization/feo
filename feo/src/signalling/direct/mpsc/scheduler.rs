@@ -20,7 +20,7 @@ use crate::signalling::common::mpsc::endpoint::{
 use crate::signalling::common::mpsc::primitives::{Receiver, Sender};
 use crate::signalling::common::mpsc::worker::WorkerConnector;
 use crate::signalling::common::mpsc::WorkerConnectorBuilder;
-use crate::signalling::common::signals::Signal;
+use crate::signalling::common::signals::{self, Signal};
 use alloc::boxed::Box;
 use core::time::Duration;
 use std::collections::{HashMap, HashSet};
@@ -155,6 +155,11 @@ impl ConnectScheduler for SchedulerConnector {
     /// This method is a no-op and always returns Ok.
     fn sync_time(&mut self) -> Result<(), Error> {
         Ok(())
+    }
+
+    fn get_connected_agent_ids(&self) -> alloc::vec::Vec<AgentId> {
+        // In direct MPSC mode, there are no remote agents.
+        alloc::vec![]
     }
 
     fn receive(&mut self, timeout: Duration) -> Result<Option<Signal>, Error> {

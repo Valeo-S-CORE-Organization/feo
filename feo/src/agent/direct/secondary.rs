@@ -63,7 +63,7 @@ impl Secondary {
                         let mut connector =
                             TcpWorkerConnector::new(addr, activities.iter().map(|(id, _)| *id));
                         connector.connect_remote().expect("failed to connect");
-                        let worker = Worker::new(id, activities, connector, timeout);
+                        let worker = Worker::new(id, config.id, activities, connector, timeout);
 
                         worker.run().expect("failed to run worker");
                     }
@@ -71,7 +71,7 @@ impl Secondary {
                         let mut connector =
                             UnixWorkerConnector::new(path, activities.iter().map(|(id, _)| *id));
                         connector.connect_remote().expect("failed to connect");
-                        let worker = Worker::new(id, activities, connector, timeout);
+                        let worker = Worker::new(id, config.id, activities, connector, timeout);
 
                         worker.run().expect("failed to run worker");
                     }

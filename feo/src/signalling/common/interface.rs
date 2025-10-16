@@ -15,6 +15,7 @@ use crate::error::Error;
 use crate::ids::{ActivityId, AgentId};
 use crate::signalling::common::signals::Signal;
 use core::time::Duration;
+use alloc::vec::Vec;
 
 /// Trait for the connector of a scheduler
 ///
@@ -25,6 +26,9 @@ pub(crate) trait ConnectScheduler {
 
     /// Synchronize the time on all remotes
     fn sync_time(&mut self) -> Result<(), Error>;
+
+    /// Get the IDs of all connected agents (workers and recorders).
+    fn get_connected_agent_ids(&self) -> Vec<AgentId>;
 
     /// Try to receive a signal, returning latest after `timeout`
     fn receive(&mut self, timeout: Duration) -> Result<Option<Signal>, Error>;

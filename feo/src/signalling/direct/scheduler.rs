@@ -151,6 +151,10 @@ where
         Ok(())
     }
 
+    fn get_connected_agent_ids(&self) -> Vec<AgentId> {
+        self.recorder_id_token_map.keys().copied().collect()
+    }
+
     fn receive(&mut self, timeout: Duration) -> Result<Option<Signal>, Error> {
         if let Some((_, signal)) = self.server.receive(&mut self.events, timeout) {
             match signal {

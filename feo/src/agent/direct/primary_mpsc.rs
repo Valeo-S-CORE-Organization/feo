@@ -29,6 +29,8 @@ use std::thread::{self, JoinHandle};
 
 /// Configuration of the primary agent
 pub struct PrimaryConfig {
+    /// Id of the primary agent
+    pub id: AgentId,
     /// Cycle time of the step loop
     pub cycle_time: Duration,
     /// Dependencies per activity
@@ -56,11 +58,12 @@ impl Primary {
             cycle_time,
             activity_dependencies,
             recorder_ids,
-            worker_assignments,
             timeout,
+            ..
         } = config;
 
-        let activity_worker_map: HashMap<ActivityId, WorkerId> = worker_assignments
+        let activity_worker_map: HashMap<ActivityId, WorkerId> = config
+            .worker_assignments
             .iter()
             .flat_map(|(wid, aid_bld)| aid_bld.iter().map(move |id_b| (id_b.0, *wid)))
             .collect();
@@ -72,18 +75,20 @@ impl Primary {
         let mut connector_builders = connector.worker_connector_builders();
 
         // Create worker threads first so that the connector of the scheduler can connect
-        let _worker_threads = worker_assignments
+        let _worker_threads = config
+            .worker_assignments
             .into_iter()
             .map(|(id, activities)| {
                 let connector_builder = connector_builders
                     .remove(&id)
                     .expect("missing connector builder");
+                let agent_id = config.id;
                 thread::spawn(move || {
                     let mut connector = connector_builder();
                     connector.connect_remote().expect("failed to connect");
 
                     let activity_builders = activities;
-                    let worker = Worker::new(id, activity_builders, connector, timeout);
+                    let worker = Worker::new(id, agent_id, activity_builders, connector, timeout);
                     worker.run().expect("failed to run worker");
                 })
             })

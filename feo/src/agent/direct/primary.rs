@@ -31,6 +31,8 @@ use std::thread::{self, JoinHandle};
 
 /// Configuration of the primary agent
 pub struct PrimaryConfig {
+    /// Id of the primary agent
+    pub id: AgentId,
     /// Cycle time of the step loop
     pub cycle_time: Duration,
     /// Dependencies per activity
@@ -61,15 +63,17 @@ impl Primary {
             activity_dependencies,
             recorder_ids,
             endpoint,
-            worker_assignments,
             timeout,
+            ..
         } = config;
 
         // Create worker threads first so that the connector of the scheduler can connect
-        let _worker_threads = worker_assignments
+        let _worker_threads = config
+            .worker_assignments
             .into_iter()
             .map(|(id, activities)| {
                 let endpoint = endpoint.clone();
+                let agent_id = config.id;
                 thread::spawn(move || match endpoint {
                     NodeAddress::Tcp(addr) => {
                         let mut connector =
@@ -77,7 +81,7 @@ impl Primary {
                         connector.connect_remote().expect("failed to connect");
 
                         let activity_builders = activities;
-                        let worker = Worker::new(id, activity_builders, connector, timeout);
+                        let worker = Worker::new(id, agent_id, activity_builders, connector, timeout);
 
                         worker.run().expect("failed to run worker");
                     }
@@ -87,7 +91,7 @@ impl Primary {
                         connector.connect_remote().expect("failed to connect");
 
                         let activity_builders = activities;
-                        let worker = Worker::new(id, activity_builders, connector, timeout);
+                        let worker = Worker::new(id, agent_id, activity_builders, connector, timeout);
 
                         worker.run().expect("failed to run worker");
                     }

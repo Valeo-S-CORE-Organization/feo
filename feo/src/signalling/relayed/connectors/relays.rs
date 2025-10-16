@@ -136,6 +136,10 @@ impl<Inter: IsChannel> PrimarySendRelay<Inter> {
         Ok(())
     }
 
+    pub fn get_remote_agents(&self) -> impl Iterator<Item = AgentId> + '_ {
+        self.remote_agents.iter().copied()
+    }
+
     pub fn send_to_agent(
         &mut self,
         agent_id: AgentId,

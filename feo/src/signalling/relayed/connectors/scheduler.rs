@@ -22,6 +22,7 @@ use crate::signalling::relayed::interface::{
     Builder, IsChannel, ProtocolMultiRecv, ProtocolMultiSend,
 };
 use core::time::Duration;
+use alloc::vec::Vec;
 use feo_log::debug;
 use std::collections::{HashMap, HashSet};
 
@@ -121,6 +122,15 @@ impl<Inter: IsChannel, Intra: IsChannel> ConnectScheduler for SchedulerConnector
 
     fn sync_time(&mut self) -> Result<(), Error> {
         self.sync_time()
+    }
+
+    fn get_connected_agent_ids(&self) -> Vec<AgentId> {
+        let mut agent_ids: Vec<_> = self.worker_agent_map.values().copied().collect();
+        // In relayed mode, recorders are also agents we talk to.
+        agent_ids.extend(self.ipc_send_relay.get_remote_agents());
+        agent_ids.sort();
+        agent_ids.dedup();
+        agent_ids
     }
 
     fn receive(&mut self, timeout: Duration) -> Result<Option<Signal>, Error> {

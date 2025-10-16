@@ -15,7 +15,7 @@
 
 use crate::activity::{Activity, ActivityBuilder};
 use crate::error::Error;
-use crate::ids::{ActivityId, WorkerId};
+use crate::ids::{ActivityId, AgentId, WorkerId};
 use crate::signalling::common::interface::ConnectWorker;
 use crate::signalling::common::signals::Signal;
 use crate::timestamp;
@@ -33,6 +33,8 @@ use std::collections::HashMap;
 pub(crate) struct Worker<T: ConnectWorker> {
     /// ID of this worker
     id: WorkerId,
+    /// ID of the agent this worker belongs to
+    agent_id: AgentId,
     /// Map from [ActivityId] to the activity
     activities: HashMap<ActivityId, Box<dyn Activity>>,
     /// Connector to the scheduler
@@ -45,6 +47,7 @@ impl<T: ConnectWorker> Worker<T> {
     /// Create a new instance
     pub(crate) fn new(
         id: WorkerId,
+        agent_id: AgentId,
         activity_builders: impl IntoIterator<Item = (ActivityId, Box<dyn ActivityBuilder>)>,
         connector: T,
         timeout: Duration,
@@ -57,6 +60,7 @@ impl<T: ConnectWorker> Worker<T> {
 
         Self {
             id,
+            agent_id,
             activities,
             connector,
             timeout,
@@ -83,7 +87,7 @@ impl<T: ConnectWorker> Worker<T> {
                 }
                 Signal::Terminate(_) => {
                     debug!("Worker {} received Terminate signal. Acknowledging and exiting.", self.id);
-                    //////////////////////////////////self.connector.send_to_scheduler(&Signal::TerminateAck(self.agent_id))?;
+                    self.connector.send_to_scheduler(&Signal::TerminateAck(self.agent_id))?;
                     return Ok(()); // Graceful exit
                 }
                 other => return Err(Error::UnexpectedSignal(other)),

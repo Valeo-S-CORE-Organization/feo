@@ -179,6 +179,7 @@ mod direct_mpsc {
 
         let agent_id = params.agent_id;
         PrimaryConfig {
+            id: agent_id,
             cycle_time: params.feo_cycle_time,
             activity_dependencies: app_config.activity_dependencies(),
             // With only one agent, we cannot attach a recorder
@@ -228,6 +229,7 @@ mod direct_sockets {
     ) -> PrimaryConfig {
         let agent_id = params.agent_id;
         PrimaryConfig {
+            id: agent_id,
             cycle_time: params.feo_cycle_time,
             activity_dependencies: app_config.activity_dependencies(),
             recorder_ids: app_config.recorders(),

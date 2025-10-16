@@ -120,7 +120,7 @@ impl Primary {
                     connector.connect_remote().expect("failed to connect");
 
                     let activity_builders = activities;
-                    let worker = Worker::new(id, activity_builders, connector, timeout);
+                    let worker = Worker::new(id, config.id, activity_builders, connector, timeout);
                     worker.run().expect("failed to run worker");
                 })
             })
