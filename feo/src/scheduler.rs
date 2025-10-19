@@ -225,7 +225,7 @@ impl Scheduler {
 
     /// Manages the graceful shutdown of all started activities and agents.
     /// This function is intended to be called when the application needs to exit.
-    #[allow(dead_code)] // This is called from the main binary, not within the library.
+   // #[allow(dead_code)] // This is called from the main binary, not within the library.
     pub(crate) fn shutdown_gracefully(&mut self, reason: &str) {
         info!("Shutting down... Reason: {}", reason);
 
