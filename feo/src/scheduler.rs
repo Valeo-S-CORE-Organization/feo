@@ -27,8 +27,10 @@ use std::thread;
 
 /// Global activity scheduler
 ///
-/// The scheduler (aka 'FEO Executor') executes the FEO activities according to the defined order
+/// The scheduler (aka 'FEO Executor') executes the FEO activities according to the defined order.
 pub(crate) struct Scheduler {
+    /// The ID of the agent this scheduler is running on.
+    agent_id: AgentId,
     /// Target duration of a task chain cycle
     cycle_time: feo_time::Duration,
     /// Timeout of receive function
@@ -50,6 +52,7 @@ pub(crate) struct Scheduler {
 
 impl Scheduler {
     pub(crate) fn new(
+        agent_id: AgentId,
         feo_cycle_time: feo_time::Duration,
         receive_timeout: core::time::Duration,
         activity_depends: HashMap<ActivityId, Vec<ActivityId>>,
@@ -73,6 +76,7 @@ impl Scheduler {
         let recorders_ready = recorder_ids.iter().map(|id| (*id, false)).collect();
 
         Self {
+            agent_id,
             cycle_time: feo_cycle_time,
             receive_timeout,
             activity_depends,
@@ -162,10 +166,8 @@ impl Scheduler {
                 );
                 thread::sleep(time_left);
             }
-            //////
-            ///
-            /// // After one cycle, initiate a graceful shutdown.
-          self.shutdown_gracefully("Single cycle execution complete");//for testing
+            // After one cycle, initiate a graceful shutdown.
+          self.shutdown_gracefully("Single cycle execution complete"); //for testing
           break;//for testing
 
         }// end loop
@@ -300,7 +302,11 @@ impl Scheduler {
         }
 
         // 5. Wait for TerminateAck from all connected agents.
-        let mut pending_agent_acks: BTreeSet<_> = self.connector.get_connected_agent_ids().into_iter().collect();
+        // We only wait for remote agents, so we filter out our own agent ID.
+        let mut pending_agent_acks: BTreeSet<_> = self.connector.get_connected_agent_ids()
+            .into_iter()
+            .filter(|id| *id != self.agent_id)
+            .collect();
         if pending_agent_acks.is_empty() {
             info!("No remote agents to wait for. Agent shutdown complete.");
             return;

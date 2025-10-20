@@ -114,6 +114,7 @@ impl Primary {
         connector.connect_remotes().expect("failed to connect");
 
         let scheduler = Scheduler::new(
+            config.id,
             cycle_time,
             timeout,
             activity_dependencies,
