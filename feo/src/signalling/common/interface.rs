@@ -39,7 +39,7 @@ pub(crate) trait ConnectScheduler {
     /// Send `signal` to the recorder with `recorder_id`
     fn send_to_recorder(&mut self, recorder_id: AgentId, signal: &Signal) -> Result<(), Error>;
 
-     /// Broadcast `signal` to all connected agents
+     /// Broadcast termination `signal` to all connected agents
     fn broadcast(&mut self, signal: &Signal) -> Result<(), Error>;
 }
 

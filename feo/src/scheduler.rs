@@ -162,7 +162,13 @@ impl Scheduler {
                 );
                 thread::sleep(time_left);
             }
-        }
+            //////
+            ///
+            /// // After one cycle, initiate a graceful shutdown.
+          self.shutdown_gracefully("Single cycle execution complete");//for testing
+          break;//for testing
+
+        }// end loop
     }
 
     /// Step all activities whose dependencies have signalled ready
@@ -316,7 +322,7 @@ impl Scheduler {
             }
         }
 
-        info!("Finished waiting for all acknowledgements. Shutdown complete.");
+         info!("Finished waiting for all acknowledgements. Shutdown complete.");
     }
 
 
