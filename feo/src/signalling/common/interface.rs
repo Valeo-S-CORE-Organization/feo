@@ -40,7 +40,7 @@ pub(crate) trait ConnectScheduler {
     fn send_to_recorder(&mut self, recorder_id: AgentId, signal: &Signal) -> Result<(), Error>;
 
      /// Broadcast termination `signal` to all connected agents
-    fn broadcast(&mut self, signal: &Signal) -> Result<(), Error>;
+    fn broadcast_terminate(&mut self, signal: &Signal) -> Result<(), Error>;
 }
 
 /// Trait for the connector of a worker

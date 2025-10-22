@@ -297,7 +297,7 @@ impl Scheduler {
 
         // 4. Broadcast Terminate signal to all agents.
         info!("Broadcasting Terminate signal to all agents.");
-        if let Err(e) = self.connector.broadcast(&Signal::Terminate(timestamp())) {
+        if let Err(e) = self.connector.broadcast_terminate(&Signal::Terminate(timestamp())) {
             error!("Failed to broadcast Terminate signal: {:?}", e);
         }
 

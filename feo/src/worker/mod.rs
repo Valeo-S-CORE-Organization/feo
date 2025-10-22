@@ -95,6 +95,7 @@ impl<T: ConnectWorker> Worker<T> {
                 Signal::Terminate(_) => {
                     debug!("Worker {} received Terminate signal. Acknowledging and exiting.", self.id);
                     self.connector.send_to_scheduler(&Signal::TerminateAck(self.agent_id))?;
+                    debug!("Worker {} sent termination ack. Exiting.", self.id);
                     return Ok(()); // Graceful exit
                 }
                 other => return Err(Error::UnexpectedSignal(other)),

@@ -176,7 +176,7 @@ impl ConnectScheduler for SchedulerConnector {
         unimplemented!("Recording not supported with mpsc channels");
     }
 
-    fn broadcast(&mut self, _signal: &Signal) -> Result<(), Error> {
+    fn broadcast_terminate(&mut self, _signal: &Signal) -> Result<(), Error> {
         // In direct MPSC mode, all workers are local threads within the same process.
         // When the scheduler's `run` method finishes and the main thread exits,
         // the OS will automatically terminate all worker threads.

@@ -83,6 +83,12 @@ impl<Inter: IsChannel, Intra: IsChannel> PrimaryReceiveRelay<Inter, Intra> {
                     error!("Reception timed out");
                     continue;
                 }
+                Err(Error::ChannelClosed) | Err(Error::Io(_)) => {
+                    // A closed channel or I/O error means the remote agents have disconnected,
+                    // which is expected during shutdown.
+                    debug!("PrimaryReceiveRelay detected closed connection from remote agent. Exiting.");
+                    return; // Graceful exit
+                }
                 Err(_) => {
                     error!("Failed to receive");
                     continue;
@@ -361,7 +367,7 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondarySendRelay<Inter, Intra> {
         Ok(())
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<(), Error> {
         loop {
             // Receive signal from the intra-process receiver
             let signal = self.intra_receiver.receive(self.timeout);
@@ -371,6 +377,12 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondarySendRelay<Inter, Intra> {
                 Ok(None) => {
                     error!("Reception timed out");
                     continue;
+                }
+                Err(Error::ChannelClosed) => {
+                    debug!(
+                        "SecondarySendRelay detected closed channel from local workers. Exiting."
+                    );
+                    return Ok(()); // This is the graceful exit condition
                 }
                 Err(_) => {
                     error!("Failed to receive");
@@ -388,10 +400,11 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondarySendRelay<Inter, Intra> {
             };
 
             let protocol_signal: Inter::ProtocolSignal = core_signal.into();
-            let result = self.inter_sender.send(protocol_signal);
-            if result.is_err() {
-                error!("Failed to send signal {protocol_signal:?}");
-            }
+            // let result = self.inter_sender.send(protocol_signal);
+            // if result.is_err() {
+            //     error!("Failed to send signal {protocol_signal:?}");
+            // }
+            self.inter_sender.send(protocol_signal)?;
         }
     }
 }
