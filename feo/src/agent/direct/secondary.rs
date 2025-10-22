@@ -89,5 +89,6 @@ impl Secondary {
         for th in self.worker_threads {
             th.join().unwrap();
         }
+        debug!("Secondary with ID {:?} finished", self.id);
     }
 }

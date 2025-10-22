@@ -24,7 +24,7 @@ use crate::timestamp::sync_info;
 use core::time::Duration;
 use feo_log::{debug, error, trace};
 use std::collections::{HashMap, HashSet};
-use std::thread;
+use std::{io::ErrorKind, thread};
 
 /// Relay for the primary agent to receive signals from secondary agents
 pub struct PrimaryReceiveRelay<Inter: IsChannel, Intra: IsChannel> {
@@ -230,6 +230,10 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
                 Ok(None)
             }
             Err(Error::ChannelClosed) => Err(Error::ChannelClosed),
+            Err(Error::Io((e, _))) if e.kind() == ErrorKind::ConnectionReset => {
+                debug!("Connection to primary was reset (expected during shutdown)");
+                Err(Error::Io((e, "connection reset")))
+            }
             Err(e) => {
                 error!("Failed to receive: {:?}", e);
                 Err(e)
@@ -290,8 +294,12 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
                     continue;
                 }
                 Err(Error::ChannelClosed) => {
-                    error!("Connection to primary lost. Initiating self-shutdown.");
+                    debug!("Connection to primary lost. Initiating self-shutdown.");
                     return; // Exit the relay thread. The workers will detect the closed channel.
+                }
+                Err(Error::Io((e, _))) if e.kind() == ErrorKind::ConnectionReset => {
+                    debug!("Connection to primary was reset (expected during shutdown). Exiting.");
+                    return; // Graceful exit
                 }
                 Err(e) => {
                     error!("Fatal error during receive: {:?}. Exiting.", e);
@@ -400,10 +408,6 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondarySendRelay<Inter, Intra> {
             };
 
             let protocol_signal: Inter::ProtocolSignal = core_signal.into();
-            // let result = self.inter_sender.send(protocol_signal);
-            // if result.is_err() {
-            //     error!("Failed to send signal {protocol_signal:?}");
-            // }
             self.inter_sender.send(protocol_signal)?;
         }
     }
