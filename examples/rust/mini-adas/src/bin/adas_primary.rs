@@ -121,6 +121,7 @@ mod cfg {
         check_ids(&params.recorder_ids, &agent_ids);
 
         PrimaryConfig {
+            id: AGENT_ID,
             cycle_time: params.feo_cycle_time,
             activity_dependencies: activity_dependencies(),
             recorder_ids: params.recorder_ids,
@@ -146,6 +147,7 @@ mod cfg {
         check_ids(&params.recorder_ids, &agent_ids);
 
         PrimaryConfig {
+            id: AGENT_ID,
             cycle_time: params.feo_cycle_time,
             activity_dependencies: activity_dependencies(),
             recorder_ids: params.recorder_ids,
