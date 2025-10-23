@@ -80,17 +80,20 @@ impl<Inter: IsChannel, Intra: IsChannel> PrimaryReceiveRelay<Inter, Intra> {
             let signal = match signal {
                 Ok(Some(signal)) => signal,
                 Ok(None) => {
-                    error!("Reception timed out");
+                    error!("[PrimaryReceiveRelay]Reception timed out");
                     continue;
                 }
-                Err(Error::ChannelClosed) | Err(Error::Io(_)) => {
-                    // A closed channel or I/O error means the remote agents have disconnected,
-                    // which is expected during shutdown.
-                    debug!("PrimaryReceiveRelay detected closed connection from remote agent. Exiting.");
-                    return; // Graceful exit
+                Err(Error::ChannelClosed) => {
+                    debug!("[PrimaryReceiveRelay]All remote agent connections reported closed. Initiating final relay shutdown.");
+                     return;
                 }
+               Err(Error::Io((e, _))) if e.kind() == ErrorKind::ConnectionReset => {
+                        debug!("[PrimaryReceiveRelay]A remote agent connection was reset.");
+                       return;
+                }
+
                 Err(_) => {
-                    error!("Failed to receive");
+                    error!("[PrimaryReceiveRelay]Failed to receive");
                     continue;
                 }
             };
@@ -98,7 +101,7 @@ impl<Inter: IsChannel, Intra: IsChannel> PrimaryReceiveRelay<Inter, Intra> {
             let signal: Signal = match signal.try_into() {
                 Ok(signal) => signal,
                 Err(_) => {
-                    error!("Received unexpected signal {signal:?}");
+                    error!("[PrimaryReceiveRelay]Received unexpected signal {signal:?}");
                     continue;
                 }
             };
@@ -107,7 +110,7 @@ impl<Inter: IsChannel, Intra: IsChannel> PrimaryReceiveRelay<Inter, Intra> {
             let protocol_signal: Intra::ProtocolSignal = signal.into();
             let result = intra_sender.send(protocol_signal);
             if result.is_err() {
-                error!("Failed to send signal {protocol_signal:?}");
+                error!("[PrimaryReceiveRelay]Failed to send signal {protocol_signal:?}");
             }
         }
     }
@@ -226,12 +229,12 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
         match received {
             Ok(Some(s)) => Ok(Some(s)),
             Ok(None) => {
-                error!("Reception timed out");
+                error!("[SecondaryReceiveRelay]Reception timed out");
                 Ok(None)
             }
             Err(Error::ChannelClosed) => Err(Error::ChannelClosed),
             Err(Error::Io((e, _))) if e.kind() == ErrorKind::ConnectionReset => {
-                debug!("Connection to primary was reset (expected during shutdown)");
+                debug!("SecondaryReceiveRelay detected connection to primary reset (expected during shutdown)");
                 Err(Error::Io((e, "connection reset")))
             }
             Err(e) => {
@@ -268,7 +271,7 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
                     continue;
                 }
                 Err(e) => {
-                    error!("Fatal error during startup sync: {:?}. Exiting.", e);
+                    error!("[SecondaryReceiveRelay]Fatal error during startup sync: {:?}. Exiting.", e);
                     return;
                 }
             };
@@ -276,7 +279,7 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
             let sync_info = match protocol_signal.try_into() {
                 Ok(Signal::StartupSync(s)) => s,
                 Ok(_) | Err(_) => {
-                    error!("Unexpected signal {protocol_signal:?}");
+                    error!("[SecondaryReceiveRelay]Unexpected signal {protocol_signal:?}");
                     continue;
                 }
             };
@@ -294,15 +297,15 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
                     continue;
                 }
                 Err(Error::ChannelClosed) => {
-                    debug!("Connection to primary lost. Initiating self-shutdown.");
+                    debug!("[SecondaryReceiveRelay]Connection to primary lost. Initiating self-shutdown.");
                     return; // Exit the relay thread. The workers will detect the closed channel.
                 }
                 Err(Error::Io((e, _))) if e.kind() == ErrorKind::ConnectionReset => {
-                    debug!("Connection to primary was reset (expected during shutdown). Exiting.");
+                    debug!("[SecondaryReceiveRelay]Connection to primary was reset (expected during shutdown). Exiting.");
                     return; // Graceful exit
                 }
                 Err(e) => {
-                    error!("Fatal error during receive: {:?}. Exiting.", e);
+                    error!("[SecondaryReceiveRelay]Fatal error during receive: {:?}. Exiting.", e);
                     return;
                 }
             };
@@ -310,7 +313,7 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
             let core_signal: Signal = match protocol_signal.try_into() {
                 Ok(signal) => signal,
                 Err(_) => {
-                    error!("Received unexpected signal {protocol_signal:?}");
+                    error!("[SecondaryReceiveRelay]Received unexpected signal {protocol_signal:?}");
                     continue;
                 }
             };
@@ -321,7 +324,7 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
                     // This is a targeted signal for a specific activity.
                     // Lookup corresponding worker id.
                     let Some(worker_id) = activity_worker_map.get(&act_id) else {
-                        error!("Received unexpected activity id {act_id:?} in {core_signal:?}");
+                        error!("[SecondaryReceiveRelay]Received unexpected activity id {act_id:?} in {core_signal:?}");
                         continue;
                     };
 
@@ -334,14 +337,14 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondaryReceiveRelay<Inter, Intra> {
                 }
                 Signal::Terminate(_) | Signal::StartupSync(_) => {
                     // This is a broadcast signal for all local workers.
-                    debug!("Broadcasting {:?} signal to all local workers.", core_signal);
+                    debug!("[SecondaryReceiveRelay]Broadcasting {:?} signal to all local workers.", core_signal);
                     let protocol_signal: Intra::ProtocolSignal = core_signal.into();
                     if let Err(e) = intra_sender.broadcast(protocol_signal) {
                         error!("Failed to broadcast signal to local workers: {:?}", e);
                     }
                 }
                 other => {
-                    error!("Received unexpected signal '{:?}' from primary, discarding.", other);
+                    error!("[SecondaryReceiveRelay]Received unexpected signal '{:?}' from primary, discarding.", other);
                 }
             }
         }
@@ -393,7 +396,7 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondarySendRelay<Inter, Intra> {
                     return Ok(()); // This is the graceful exit condition
                 }
                 Err(_) => {
-                    error!("Failed to receive");
+                    error!("[SecondarySendRelay]Failed to receive");
                     continue;
                 }
             };
@@ -402,7 +405,7 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondarySendRelay<Inter, Intra> {
             let core_signal: Signal = match signal.try_into() {
                 Ok(signal) => signal,
                 Err(_) => {
-                    error!("Received unexpected signal {signal:?}");
+                    error!("[SecondarySendRelay]Received unexpected signal {signal:?}");
                     continue;
                 }
             };

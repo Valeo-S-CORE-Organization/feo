@@ -154,6 +154,10 @@ impl<Inter: IsChannel, Intra: IsChannel> ConnectScheduler for SchedulerConnector
     }
 
     fn broadcast_terminate(&mut self, signal: &Signal) -> Result<(), Error> {
-        self.ipc_send_relay.broadcast((*signal).into())
+        // Broadcast to remote agents via the IPC relay.
+        self.ipc_send_relay.broadcast((*signal).into())?;
+
+        // Also broadcast to local workers via the MPSC sender.
+        self.worker_sender.broadcast((*signal).into())
     }
 }

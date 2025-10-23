@@ -313,7 +313,7 @@ impl Scheduler {
         }
 
         info!("Waiting for TerminateAck from agents: {:?}", pending_agent_acks);
-        let agent_ack_timeout = self.receive_timeout * (pending_agent_acks.len() as u32 + 2);
+        let agent_ack_timeout = self.receive_timeout * (pending_agent_acks.len() as u32 + 4);
         let start = Instant::now();
 
         while !pending_agent_acks.is_empty() {

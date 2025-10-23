@@ -26,6 +26,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::time::Duration;
 use std::collections::HashMap;
+use feo_log::debug;
 use std::thread::{self, JoinHandle};
 
 /// Configuration of the primary agent
@@ -153,6 +154,13 @@ impl Primary {
 
         // TODO: Bubble up errors
         self.scheduler.run();
+
+        // Wait for all local worker threads to complete their shutdown.
+        // They will exit after receiving the `Terminate` signal from the scheduler's broadcast.
+        for th in self._worker_threads.drain(..) {
+            th.join().unwrap();
+        }
+        debug!("Primary finished!!");
 
         Ok(())
     }
