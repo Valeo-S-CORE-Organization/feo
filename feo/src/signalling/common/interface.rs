@@ -15,6 +15,7 @@ use crate::error::Error;
 use crate::ids::{ActivityId, AgentId};
 use crate::signalling::common::signals::Signal;
 use core::time::Duration;
+use std::thread::JoinHandle;
 use alloc::vec::Vec;
 
 /// Trait for the connector of a scheduler
@@ -41,6 +42,12 @@ pub(crate) trait ConnectScheduler {
 
      /// Broadcast termination `signal` to all connected agents
     fn broadcast_terminate(&mut self, signal: &Signal) -> Result<(), Error>;
+
+    /// Take ownership of any background relay threads.
+    /// The default implementation returns an empty Vec for connectors that don't have relays.
+    fn take_relay_threads(&mut self) -> Vec<JoinHandle<()>> {
+        Vec::new()
+    }
 }
 
 /// Trait for the connector of a worker

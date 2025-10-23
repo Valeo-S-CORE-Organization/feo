@@ -58,7 +58,9 @@ pub struct Primary {
     /// Scheduler
     scheduler: Scheduler,
     /// Handles to the worker threads
-    _worker_threads: Vec<JoinHandle<()>>,
+    worker_threads: Vec<JoinHandle<()>>,
+    /// Handles to the relay threads
+    relay_threads: Vec<JoinHandle<()>>,
 }
 
 impl Primary {
@@ -112,7 +114,7 @@ impl Primary {
         };
 
         // Create worker threads first so that the connector of the scheduler can connect
-        let _worker_threads = worker_assignments
+        let worker_threads = worker_assignments
             .into_iter()
             .map(|(id, activities)| {
                 let connector_builder = builders.remove(&id).expect("missing connector builder");
@@ -129,6 +131,9 @@ impl Primary {
 
         connector.connect_remotes().expect("failed to connect");
 
+        // Take ownership of the relay threads from the connector.
+        let relay_threads = connector.take_relay_threads();
+
         let scheduler = Scheduler::new(
             id,
             cycle_time,
@@ -140,7 +145,8 @@ impl Primary {
 
         Self {
             scheduler,
-            _worker_threads,
+            worker_threads,
+            relay_threads,
         }
     }
 
@@ -155,9 +161,15 @@ impl Primary {
         // TODO: Bubble up errors
         self.scheduler.run();
 
+        debug!("Primary agent waiting for background threads to join...");
+
         // Wait for all local worker threads to complete their shutdown.
         // They will exit after receiving the `Terminate` signal from the scheduler's broadcast.
-        for th in self._worker_threads.drain(..) {
+        for th in self.worker_threads.drain(..) {
+            th.join().unwrap();
+        }
+        // Wait for the communication relay threads to complete their shutdown.
+        for th in self.relay_threads.drain(..) {
             th.join().unwrap();
         }
         debug!("Primary finished!!");

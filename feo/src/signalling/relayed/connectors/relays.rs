@@ -48,30 +48,29 @@ impl<Inter: IsChannel, Intra: IsChannel> PrimaryReceiveRelay<Inter, Intra> {
         }
     }
 
-    pub fn run_and_connect(&mut self) {
+    pub fn run_and_connect(&mut self) -> thread::JoinHandle<()> {
         let inter_receiver_builder = self.inter_receiver_builder.take().unwrap();
         let intra_sender_builder = self.intra_sender_builder.take().unwrap();
         let timeout = self.timeout;
         let thread = thread::spawn(move || {
-            Self::thread_main(inter_receiver_builder, intra_sender_builder, timeout)
+            if let Err(e) = Self::thread_main(inter_receiver_builder, intra_sender_builder, timeout) {
+                // This error is expected during shutdown when the scheduler drops its receiver.
+                debug!("[PrimaryReceiveRelay] thread terminated: {:?}", e);
+            }
         });
-        self._thread = Some(thread);
+        thread
     }
 
     fn thread_main(
         inter_receiver_builder: Builder<Inter::MultiReceiver>,
         intra_sender_builder: Builder<Intra::Sender>,
         timeout: Duration,
-    ) {
+    ) -> Result<(), Error> {
         trace!("PrimaryReceiveRelay thread started");
         let mut inter_receiver = inter_receiver_builder();
         let mut intra_sender = intra_sender_builder();
-        inter_receiver
-            .connect_senders(timeout)
-            .expect("failed to connect inter-process receiver");
-        intra_sender
-            .connect_receiver(timeout)
-            .expect("failed to connect intra-process sender");
+        inter_receiver.connect_senders(timeout)?;
+        intra_sender.connect_receiver(timeout)?;
         trace!("PrimaryReceiveRelay connected");
         loop {
             // Receive from remote workers on inter-process receiver
@@ -84,34 +83,33 @@ impl<Inter: IsChannel, Intra: IsChannel> PrimaryReceiveRelay<Inter, Intra> {
                     continue;
                 }
                 Err(Error::ChannelClosed) => {
-                    debug!("[PrimaryReceiveRelay]All remote agent connections reported closed. Initiating final relay shutdown.");
-                     return;
+                    debug!("[PrimaryReceiveRelay]Channel closed. Exiting.");
+                    return Ok(());
                 }
                Err(Error::Io((e, _))) if e.kind() == ErrorKind::ConnectionReset => {
+                        // A single client disconnected. This is expected during shutdown.
+                        // Log it and continue listening for other clients.
                         debug!("[PrimaryReceiveRelay]A remote agent connection was reset.");
-                       return;
+                         return Ok(());
                 }
 
-                Err(_) => {
-                    error!("[PrimaryReceiveRelay]Failed to receive");
-                    continue;
+                Err(e) => {
+                    error!("[PrimaryReceiveRelay]Fatal error during receive: {:?}. Exiting.", e);
+                    return Err(e);
                 }
             };
 
             let signal: Signal = match signal.try_into() {
                 Ok(signal) => signal,
                 Err(_) => {
-                    error!("[PrimaryReceiveRelay]Received unexpected signal {signal:?}");
+                    error!("[PrimaryReceiveRelay]Received unexpected signal {:?}", signal);
                     continue;
                 }
             };
 
-            // Forward onto intra-process connection
+            // Forward onto intra-process connection.
             let protocol_signal: Intra::ProtocolSignal = signal.into();
-            let result = intra_sender.send(protocol_signal);
-            if result.is_err() {
-                error!("[PrimaryReceiveRelay]Failed to send signal {protocol_signal:?}");
-            }
+            intra_sender.send(protocol_signal)?;
         }
     }
 }
@@ -390,10 +388,20 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondarySendRelay<Inter, Intra> {
                     continue;
                 }
                 Err(Error::ChannelClosed) => {
-                    debug!(
-                        "SecondarySendRelay detected closed channel from local workers. Exiting."
-                    );
-                    return Ok(()); // This is the graceful exit condition
+                    debug!("[SecondarySendRelay] detected closed channel from local workers. Draining buffer before exiting.");
+                    // The channel is closed, but there might be pending messages.
+                    // We do a non-blocking drain of the buffer.
+                    while let Ok(Some(drained_signal)) = self.intra_receiver.receive(Duration::from_secs(0)) {
+                        if let Ok(core_signal) = drained_signal.try_into() {
+                            trace!("[SecondarySendRelay] Drained signal: {:?}", core_signal);
+                            let protocol_signal: Inter::ProtocolSignal = core_signal.into();
+                            if self.inter_sender.send(protocol_signal).is_err() {
+                                error!("[SecondarySendRelay] Failed to forward drained signal.");
+                            }
+                        }
+                    }
+                    debug!("[SecondarySendRelay] finished draining buffer. Exiting.");
+                    return Ok(());
                 }
                 Err(_) => {
                     error!("[SecondarySendRelay]Failed to receive");
