@@ -94,7 +94,12 @@ impl<T: ConnectWorker> Worker<T> {
                 }
                 Signal::Terminate(_) => {
                     debug!("Worker {} received Terminate signal. Acknowledging and exiting.", self.id);
-                    self.connector.send_to_scheduler(&Signal::TerminateAck(self.agent_id))?;
+                    // Attempt to send TerminateAck. If it fails (e.g., ConnectionReset),
+                    // it's not a critical error, as the primary is already shutting down.
+                    // We log it and proceed with a graceful exit.
+                    if let Err(e) = self.connector.send_to_scheduler(&Signal::TerminateAck(self.agent_id)) {
+                        debug!("Worker {} failed to send TerminateAck (this is often expected during shutdown): {:?}", self.id, e);
+                    }
                     debug!("Worker {} sent termination ack. Exiting.", self.id);
                     return Ok(()); // Graceful exit
                 }

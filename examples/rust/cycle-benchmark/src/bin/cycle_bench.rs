@@ -236,6 +236,7 @@ mod direct_sockets {
             worker_assignments: app_config.worker_assignments().remove(&agent_id).unwrap(),
             timeout: Duration::from_secs(10),
             endpoint: endpoint(&app_config, signalling),
+            activity_agent_map: app_config.activity_worker_map().iter().map(|(act_id, w_id)| (*act_id, app_config.worker_agent_map().get(w_id).copied().unwrap())).collect(),
         }
     }
 
