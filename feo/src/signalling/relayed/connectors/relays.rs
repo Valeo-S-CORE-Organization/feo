@@ -388,19 +388,8 @@ impl<Inter: IsChannel, Intra: IsChannel> SecondarySendRelay<Inter, Intra> {
                     continue;
                 }
                 Err(Error::ChannelClosed) => {
-                    debug!("[SecondarySendRelay] detected closed channel from local workers. Draining buffer before exiting.");
-                    // The channel is closed, but there might be pending messages.
-                    // We do a non-blocking drain of the buffer.
-                    while let Ok(Some(drained_signal)) = self.intra_receiver.receive(Duration::from_secs(0)) {
-                        if let Ok(core_signal) = drained_signal.try_into() {
-                            trace!("[SecondarySendRelay] Drained signal: {:?}", core_signal);
-                            let protocol_signal: Inter::ProtocolSignal = core_signal.into();
-                            if self.inter_sender.send(protocol_signal).is_err() {
-                                error!("[SecondarySendRelay] Failed to forward drained signal.");
-                            }
-                        }
-                    }
-                    debug!("[SecondarySendRelay] finished draining buffer. Exiting.");
+
+                    debug!("[SecondarySendRelay] detected closed channel from local workers, exiting.");
                     return Ok(());
                 }
                 Err(_) => {

@@ -23,6 +23,7 @@ use alloc::boxed::Box;
 use core::time::Duration;
 use feo_log::debug;
 use feo_time::Instant;
+use std::thread;
 use std::collections::HashMap;
 
 /// Worker
@@ -94,13 +95,14 @@ impl<T: ConnectWorker> Worker<T> {
                 }
                 Signal::Terminate(_) => {
                     debug!("Worker {} received Terminate signal. Acknowledging and exiting.", self.id);
-                    // Attempt to send TerminateAck. If it fails (e.g., ConnectionReset),
-                    // it's not a critical error, as the primary is already shutting down.
-                    // We log it and proceed with a graceful exit.
+                    //connection reset may happen if primary terminated and closed its sockets
                     if let Err(e) = self.connector.send_to_scheduler(&Signal::TerminateAck(self.agent_id)) {
                         debug!("Worker {} failed to send TerminateAck (this is often expected during shutdown): {:?}", self.id, e);
                     }
                     debug!("Worker {} sent termination ack. Exiting.", self.id);
+                    // Linger for a moment to ensure  TerminateAck has time to be sent
+                    // over the network before the thread exits and closes the socket.
+                    thread::sleep(Duration::from_millis(100));
                     return Ok(()); // Graceful exit
                 }
                 other => return Err(Error::UnexpectedSignal(other)),

@@ -101,9 +101,6 @@ impl Secondary {
             }
         }
 
-        // Linger for a moment to ensure the final TerminateAck has time to be sent
-        // over the network before the process exits and closes the socket.
-        thread::sleep(Duration::from_millis(100));
 
         debug!("Secondary with ID {:?} finished", self.id);
     }
