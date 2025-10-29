@@ -96,6 +96,7 @@ mod cfg {
 
     pub(super) fn make_config(params: Params) -> PrimaryConfig {
         PrimaryConfig {
+            id: AGENT_ID,
             cycle_time: params.feo_cycle_time,
             activity_dependencies: activity_dependencies(),
             // With only one agent, we cannot attach a recorder

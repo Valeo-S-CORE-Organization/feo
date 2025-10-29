@@ -176,10 +176,8 @@ impl ConnectScheduler for SchedulerConnector {
     }
 
     fn broadcast_terminate(&mut self, _signal: &Signal) -> Result<(), Error> {
-        // In direct MPSC mode, all workers are local threads within the same process.
-        // When the scheduler's `run` method finishes and the main thread exits,
-        // the OS will automatically terminate all worker threads.
-        // Therefore, broadcasting a `Terminate` signal is not strictly necessary.
-        Ok(())
+        // In direct MPSC mode, all workers are local threads. Broadcast to them.
+        let protocol_signal = ProtocolSignal::Core(Signal::Terminate(crate::timestamp::timestamp()));
+        self.sender.broadcast(protocol_signal)
     }
 }

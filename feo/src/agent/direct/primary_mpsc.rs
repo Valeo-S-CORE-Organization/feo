@@ -26,6 +26,8 @@ use alloc::vec::Vec;
 use core::time::Duration;
 use std::collections::HashMap;
 use std::thread::{self, JoinHandle};
+use feo_log::debug;
+
 
 /// Configuration of the primary agent
 pub struct PrimaryConfig {
@@ -48,7 +50,7 @@ pub struct Primary {
     /// Scheduler
     scheduler: Scheduler,
     /// Handles to the worker threads
-    _worker_threads: Vec<JoinHandle<()>>,
+    worker_threads: Vec<JoinHandle<()>>,
 }
 
 impl Primary {
@@ -75,7 +77,7 @@ impl Primary {
         let mut connector_builders = connector.worker_connector_builders();
 
         // Create worker threads first so that the connector of the scheduler can connect
-        let _worker_threads = config
+        let worker_threads = config
             .worker_assignments
             .into_iter()
             .map(|(id, activities)| {
@@ -107,7 +109,7 @@ impl Primary {
 
         Self {
             scheduler,
-            _worker_threads,
+            worker_threads,
         }
     }
 
@@ -122,6 +124,12 @@ impl Primary {
         // TODO: Bubble up errors
         self.scheduler.run();
 
+        for th in self.worker_threads.drain(..) {
+            if let Err(e) = th.join() {
+                feo_log::error!("A local worker thread in the primary agent panicked: {:?}", e);
+            }
+        }
+        debug!("Primary agent finished");
         Ok(())
     }
 }
