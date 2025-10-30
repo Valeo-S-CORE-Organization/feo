@@ -48,15 +48,3 @@ Once all activities are confirmed to be shut down, this phase terminates all age
 2.  **Secondary Agents**: The `Worker` threads on secondary agents will have already exited upon receiving the `Terminate` signal. This allows the main thread of the `Secondary` agent to `join()` its worker threads and terminate cleanly.
 
 This two-phase process ensures that data processing is stopped gracefully before the underlying processes and communication channels are torn down, preventing data corruption and ensuring a clean system exit.
-
----
-
-### Code Quality and Clarity Analysis
-
-The selected code, `broadcast_terminate`, is a good example of the design principles used in the signalling layer.
-
--   **Abstraction**: The `ConnectScheduler` trait defines a clear contract (`broadcast_terminate`). This allows the `Scheduler` to be completely unaware of whether it's operating in `direct` or `relayed` mode.
--   **Correctness**: The implementations in both `direct` and `relayed` modes correctly handle the broadcast.
-    -   The `direct` mode implementation (`signalling/direct/scheduler.rs`) correctly iterates through all known connection tokens to send the signal.
-    -   The `relayed` mode implementation (`signalling/relayed/connectors/scheduler.rs`) correctly delegates the broadcast to two separate components: the `ipc_send_relay` for remote agents and the `worker_sender` for local workers. This is a robust design that separates inter-process from intra-process communication.
--   **Clarity**: The logic is straightforward. The function's purpose is clear from its name, and the implementation follows a logical flow. No immediate improvements are necessary; the code is clean, idiomatic, and effectively uses the established abstractions.
