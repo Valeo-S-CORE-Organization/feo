@@ -4,11 +4,21 @@ This document outlines the graceful shutdown process for the FEO framework, cove
 
 The shutdown is orchestrated by the `Scheduler` and is divided into two distinct phases.
 
+## Initiation via OS Signal (e.g., Ctrl-C)
+
+The primary agent is designed to handle OS termination signals (like `SIGINT` from Ctrl-C) to ensure a clean exit. This is achieved using a shared `Arc<AtomicBool>` flag.
+1.  **Setup**: On startup, the `Primary` agent sets up a signal handler using the `ctrlc` crate.
+2.  **Signal Received**: When a termination signal is received, the handler atomically sets the shared boolean flag to `true`.
+3.  **Detection**: The `Scheduler`'s main `run` loop checks this flag on every cycle. When it detects the flag is `true`, it breaks its loop.
+4.  **Graceful Shutdown**: After breaking the loop, `Scheduler::shutdown_gracefully()` is called, initiating the two-phase shutdown process described below.
+
 ## Phase 1: Graceful Activity Shutdown
 
 This phase focuses on stopping the application-level logic (the activities).
 
-1.  **Initiation**: The shutdown process begins when `Scheduler::shutdown_gracefully()` is called.
+1.  **Initiation**: The shutdown process begins when `Scheduler::shutdown_gracefully()` is called. This can be triggered in two main ways:
+    -   **Programmatic Shutdown**: The application logic can decide to end execution and call this function (e.g., after a fixed number of cycles, timeouts,....).
+    -   **OS Signal (e.g., Ctrl-C)**: The primary agent is designed to handle OS termination signals. When a signal like `SIGINT` is received, a shared `Arc<AtomicBool>` flag is set to `true`. The `Scheduler`'s main `run` loop checks this flag on every cycle, and when it detects the change, it breaks its loop and subsequently calls `shutdown_gracefully()`.
 
 2.  **Identify Active Components**: The scheduler first identifies all activities that have successfully started. An activity is considered "started" if it has sent a `Ready` signal at least once (`ever_ready == true`).
 

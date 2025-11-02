@@ -24,10 +24,10 @@ use crate::worker::Worker;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::time::Duration;
+use feo_log::{debug, info};
 use std::collections::HashMap;
 use std::thread::{self, JoinHandle};
-use feo_log::debug;
-
+use std::sync::{atomic::AtomicBool, Arc};
 
 /// Configuration of the primary agent
 pub struct PrimaryConfig {
@@ -98,6 +98,15 @@ impl Primary {
 
         connector.connect_remotes().expect("failed to connect");
 
+        // Create a shared flag to signal shutdown from an OS signal (e.g., Ctrl-C).
+        let shutdown_requested = Arc::new(AtomicBool::new(false));
+        let shutdown_clone = shutdown_requested.clone();
+        ctrlc::set_handler(move || {
+            info!("Ctrl-C detected. Requesting graceful shutdown...");
+            shutdown_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+        })
+        .expect("Error setting Ctrl-C handler");
+
         let scheduler = Scheduler::new(
             config.id,
             cycle_time,
@@ -105,6 +114,7 @@ impl Primary {
             activity_dependencies,
             connector,
             recorder_ids,
+            shutdown_requested,
         );
 
         Self {

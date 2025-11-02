@@ -23,6 +23,8 @@ use alloc::vec::Vec;
 use feo_log::{debug, error, info, trace};
 use feo_time::Instant;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 
 /// Global activity scheduler
@@ -48,6 +50,8 @@ pub(crate) struct Scheduler {
     recorder_ids: Vec<AgentId>,
     /// Map from recorder agent ID to ready state
     recorders_ready: HashMap<AgentId, bool>,
+    /// Flag to signal a shutdown request from an external source (e.g., Ctrl-C).
+    shutdown_requested: Arc<AtomicBool>,
 }
 
 impl Scheduler {
@@ -58,6 +62,7 @@ impl Scheduler {
         activity_depends: HashMap<ActivityId, Vec<ActivityId>>,
         connector: Box<dyn ConnectScheduler>,
         recorder_ids: Vec<AgentId>,
+        shutdown_requested: Arc<AtomicBool>,
     ) -> Self {
         // Pre-allocate state map
         let activity_states: HashMap<ActivityId, ActivityState> = activity_depends
@@ -84,6 +89,7 @@ impl Scheduler {
             activity_states,
             recorder_ids,
             recorders_ready,
+            shutdown_requested,
         }
     }
 
@@ -166,11 +172,16 @@ impl Scheduler {
                 );
                 thread::sleep(time_left);
             }
-            // After one cycle, initiate a graceful shutdown.
-          self.shutdown_gracefully("Single cycle execution complete"); //for testing
-          break;//for testing
 
-        }// end loop
+            // Check for an external shutdown request (e.g., from Ctrl-C).
+            if self.shutdown_requested.load(Ordering::Relaxed) {
+                info!("External shutdown signal received, initiating graceful shutdown.");
+                break;
+            }
+        } // end loop
+
+        // Once the loop is broken, always perform a graceful shutdown.
+        self.shutdown_gracefully("Main loop concluded or external signal received.");
     }
 
     /// Step all activities whose dependencies have signalled ready
